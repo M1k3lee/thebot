@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="section-head">
+    <div>
+      <p class="eyebrow">Controls and validation</p>
+      <h1>Settings</h1>
+    </div>
+  </section>
+
+  <section class="two-column">
+    <form method="post" action="/settings" class="panel form-panel">
+      <h2>Risk defaults</h2>
+      <p class="muted">These settings cap size before the app can recommend anything stronger than a paper trade.</p>
+      <label>
+        <span>Paper bankroll</span>
+        <input type="number" step="1" min="50" name="paper_bankroll" value="{{ settings.paper_bankroll }}">
+      </label>
+      <label>
+        <span>Maximum bankroll share per trade</span>
+        <input type="number" step="0.01" min="0.01" max="0.10" name="max_trade_risk_pct" value="{{ settings.max_trade_risk_pct }}">
+      </label>
+      <label>
+        <span>Daily loss cap</span>
+        <input type="number" step="1" min="5" name="daily_loss_cap" value="{{ settings.daily_loss_cap }}">
+      </label>
+      <label>
+        <span>Per-market loss cap</span>
+        <input type="number" step="1" min="2" name="per_market_loss_cap" value="{{ settings.per_market_loss_cap }}">
+      </label>
+      <label>
+        <span>Consecutive loss limit</span>
+        <input type="number" step="1" min="1" max="5" name="consecutive_loss_limit" value="{{ settings.consecutive_loss_limit }}">
+      </label>
+      <button class="primary-button" type="submit">Save risk settings</button>
+    </form>
+
+    <article class="panel">
+      <h2>Live mode gate</h2>
+      <p class="muted">Live mode stays off by default. This demo does not send real market orders, but the gate still shows what would be required before any live adapter could be turned on.</p>
+      <ul class="compact-list">
+        {% for check in live_gate.checks %}
+          <li>
+            <strong>{{ "Pass" if check.passed else "Not yet" }}</strong>
+            <span>{{ check.label }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/live-mode/toggle" class="inline-form">
+        <input type="hidden" name="enable_live" value="{{ 'false' if settings.live_mode_enabled else 'true' }}">
+        <button class="secondary-button" type="submit" data-confirm="{{ 'Enable live mode only if you understand this demo does not place real trades yet.' if not settings.live_mode_enabled else 'Disable live mode?' }}">
+          {{ "Disable live mode" if settings.live_mode_enabled else "Try to enable live mode" }}
+        </button>
+      </form>
+    </article>
+  </section>
+
+  <section class="two-column">
+    <article class="panel">
+      <h2>Replay and validation</h2>
+      <p class="muted">Run the sample replay to generate historical paper trades and compare expected edge with realized results.</p>
+      <form method="post" action="/replay/run">
+        <button class="primary-button" type="submit">Run sample replay</button>
+      </form>
+      <dl class="fact-list">
+        <div><dt>Closed paper trades</dt><dd>{{ stats.closed_trades }}</dd></div>
+        <div><dt>Open paper trades</dt><dd>{{ stats.open_trades }}</dd></div>
+        <div><dt>Win rate</dt><dd>{{ stats.win_rate | pct }}</dd></div>
+        <div><dt>Total paper P&amp;L</dt><dd>{{ stats.total_pnl | money }}</dd></div>
+        <div><dt>Edge capture ratio</dt><dd>{{ stats.edge_capture_ratio }}</dd></div>
+      </dl>
+    </article>
+
+    <article class="panel">
+      <h2>How the safety system behaves</h2>
+      <ul class="compact-list">
+        <li><span>Paper trading is the default. Weak or confusing setups are rejected.</span></li>
+        <li><span>Daily loss caps, per-market caps, and consecutive-loss stops all block stronger actions.</span></li>
+        <li><span>No martingale, no averaging down, and no leverage are allowed in this MVP.</span></li>
+        <li><span>If there is no valid edge after costs, the app says so clearly.</span></li>
+      </ul>
+    </article>
+  </section>
+{% endblock %}

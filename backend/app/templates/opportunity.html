@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="section-head">
+    <div>
+      <p class="eyebrow">Opportunity detail</p>
+      <h1>{{ opportunity.name }}</h1>
+    </div>
+    <a class="secondary-link" href="/">Back to dashboard</a>
+  </section>
+
+  <section class="detail-hero">
+    <div class="detail-summary">
+      <span class="action-pill action-{{ opportunity.recommended_action | lower | replace(' ', '-') }}">{{ opportunity.recommended_action }}</span>
+      <p>{{ opportunity.simple_explanation }}</p>
+      <div class="detail-grid">
+        <div><span>Quality score</span><strong>{{ opportunity.quality_score }}/100</strong></div>
+        <div><span>Estimated edge after costs</span><strong>{{ opportunity.estimated_edge_per_dollar | cents }} per $1 payout</strong></div>
+        <div><span>Maximum suggested size</span><strong>{{ opportunity.max_suggested_size | money }}</strong></div>
+        <div><span>Worst-case loss</span><strong>{{ opportunity.worst_case_loss | money }}</strong></div>
+      </div>
+    </div>
+    <form method="post" action="/opportunities/{{ opportunity.id }}/simulate" class="side-form">
+      <h2>Safest next step</h2>
+      <p>Paper trade this first. The app records the idea so you can compare expected edge with actual outcomes later.</p>
+      <button class="primary-button" type="submit">Add to paper trading</button>
+      <small>No live order is sent from this screen.</small>
+    </form>
+  </section>
+
+  <section class="two-column">
+    <article class="panel">
+      <h2>Why this may work</h2>
+      <p>{{ opportunity.why_it_may_work }}</p>
+      <h2>What could go wrong</h2>
+      <p>{{ opportunity.what_could_go_wrong }}</p>
+      <h2>Why the app is not fully certain</h2>
+      <p>{{ opportunity.why_not_certain }}</p>
+      <h2>If the market moves against you</h2>
+      <p>{{ opportunity.if_market_moves_against_you }}</p>
+    </article>
+
+    <article class="panel">
+      <h2>Assumptions and safety checks</h2>
+      <dl class="fact-list">
+        <div><dt>Fees assumed</dt><dd>{{ opportunity.fees_assumed | cents }} per $1 payout</dd></div>
+        <div><dt>Slippage assumed</dt><dd>{{ opportunity.slippage_assumed | cents }} per $1 payout</dd></div>
+        <div><dt>Fill probability</dt><dd>{{ opportunity.fill_probability | pct }}</dd></div>
+        <div><dt>Liquidity quality</dt><dd>{{ opportunity.liquidity_quality }}</dd></div>
+        <div><dt>Data freshness</dt><dd>{{ opportunity.data_freshness }}</dd></div>
+        <div><dt>Volatility score</dt><dd>{{ opportunity.volatility_score | pct }}</dd></div>
+      </dl>
+      <h2>Action guidance</h2>
+      <ul class="compact-list">
+        {% for reason in opportunity.action_reasons %}
+          <li><span>{{ reason }}</span></li>
+        {% endfor %}
+      </ul>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Under the hood</p>
+        <h2>Advanced details</h2>
+      </div>
+      <button type="button" class="ghost-button" data-toggle-target="advanced-panel">Show or hide</button>
+    </div>
+    <div id="advanced-panel" class="advanced-panel is-hidden">
+      <div class="advanced-grid">
+        {% for market in opportunity.markets %}
+          <article class="mini-card">
+            <strong>{{ market.label }}</strong>
+            <p>{{ market.question }}</p>
+            <small>Buy price: {{ market.buy_yes_price | pct }}</small>
+          </article>
+        {% endfor %}
+      </div>
+      <ul class="compact-list">
+        {% for note in opportunity.advanced_notes %}
+          <li><span>{{ note }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+{% endblock %}

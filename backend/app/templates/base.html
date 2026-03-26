@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} | Plain Market</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  <script defer src="{{ url_for('static', path='/app.js') }}"></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">PM</span>
+        <span>
+          <strong>Plain Market</strong>
+          <small>Cautious prediction-market ideas in plain English</small>
+        </span>
+      </a>
+      <nav class="topnav">
+        <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Dashboard</a>
+        <a href="/settings" class="{{ 'active' if request.url.path == '/settings' else '' }}">Settings</a>
+      </nav>
+    </header>
+
+    {% if message %}
+      <section class="flash">{{ message }}</section>
+    {% endif %}
+
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

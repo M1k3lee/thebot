@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Beginner-first prediction-market assistant</p>
+      <h1>{{ headline }}</h1>
+      <p class="lede">This app looks for small, explainable gaps. It would rather tell you to wait than push a weak trade.</p>
+    </div>
+    <div class="hero-side">
+      <div class="summary-chip">
+        <span>Mode</span>
+        <strong>{{ "Live mode enabled" if settings.live_mode_enabled else "Paper only" }}</strong>
+      </div>
+      <div class="summary-chip">
+        <span>Data as of</span>
+        <strong>{{ scan.as_of }}</strong>
+      </div>
+      <div class="summary-chip">
+        <span>Markets scanned</span>
+        <strong>{{ scan.markets_scanned }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="metric-grid">
+    <article class="metric-card">
+      <span class="metric-label">Paper bankroll</span>
+      <strong>{{ settings.paper_bankroll | money }}</strong>
+      <small>The planning bankroll used for sizing suggestions.</small>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Closed paper trades</span>
+      <strong>{{ stats.closed_trades }}</strong>
+      <small>Live mode stays locked until this history is strong enough.</small>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Paper win rate</span>
+      <strong>{{ stats.win_rate | pct }}</strong>
+      <small>Shown for signal tracking, not as a promise.</small>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Paper P&amp;L</span>
+      <strong>{{ stats.total_pnl | money }}</strong>
+      <small>Expected edge and actual results are tracked separately.</small>
+    </article>
+  </section>
+
+  {% if not scan.opportunities %}
+    <section class="empty-state">
+      <h2>No good trade right now.</h2>
+      <p>The current scan did not find a small, explainable setup that still looks sensible after costs and risk limits.</p>
+    </section>
+  {% else %}
+    <section class="section-head">
+      <div>
+        <p class="eyebrow">Current opportunities</p>
+        <h2>Recommended next steps</h2>
+      </div>
+      <a class="secondary-link" href="/settings">Review safety settings</a>
+    </section>
+
+    <section class="card-stack">
+      {% for opportunity in scan.opportunities %}
+        <article class="opportunity-card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">{{ opportunity.strategy_type.replace('_', ' ') }}</p>
+              <h3>{{ opportunity.name }}</h3>
+            </div>
+            <span class="action-pill action-{{ opportunity.recommended_action | lower | replace(' ', '-') }}">{{ opportunity.recommended_action }}</span>
+          </div>
+
+          <p class="card-explainer">{{ opportunity.simple_explanation }}</p>
+
+          <div class="card-metrics">
+            <div>
+              <span>Quality score</span>
+              <strong>{{ opportunity.quality_score }}/100</strong>
+              <small>{{ opportunity.confidence_label }} confidence</small>
+            </div>
+            <div>
+              <span>Estimated edge after costs</span>
+              <strong>{{ opportunity.estimated_edge_per_dollar | cents }} per $1 payout</strong>
+              <small>After fees and slippage assumptions.</small>
+            </div>
+            <div>
+              <span>Maximum suggested size</span>
+              <strong>{{ opportunity.max_suggested_size | money }}</strong>
+              <small>The app keeps this small on purpose.</small>
+            </div>
+            <div>
+              <span>Worst-case loss</span>
+              <strong>{{ opportunity.worst_case_loss | money }}</strong>
+              <small>The amount the plan assumes could be lost.</small>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="card-flags">
+              <span>Liquidity: <strong>{{ opportunity.liquidity_quality }}</strong></span>
+              <span>Freshness: <strong>{{ opportunity.data_freshness }}</strong></span>
+              <span>Fill odds: <strong>{{ opportunity.fill_probability | pct }}</strong></span>
+            </div>
+            <a class="primary-link" href="/opportunities/{{ opportunity.id }}">See details</a>
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <section class="two-column">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Why some markets were skipped</p>
+          <h2>Rejected ideas</h2>
+        </div>
+      </div>
+      {% if scan.rejected %}
+        <ul class="compact-list">
+          {% for rejected in scan.rejected %}
+            <li>
+              <strong>{{ rejected.name }}</strong>
+              <span>{{ rejected.reason }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No rejected ideas in this scan.</p>
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Paper trading history</p>
+          <h2>Recent activity</h2>
+        </div>
+      </div>
+      {% if recent_trades %}
+        <ul class="compact-list">
+          {% for trade in recent_trades %}
+            <li>
+              <strong>{{ trade.opportunity_name }}</strong>
+              <span>{{ trade.action_label }} · {{ trade.status }} · stake {{ trade.stake_amount | money }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No paper trades yet. Start with a simulation or run the sample replay in Settings.</p>
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}
