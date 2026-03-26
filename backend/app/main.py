@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db import Base, SessionLocal, engine, get_db
 from app.models import AuditEvent
-from app.services.market_data import SampleMarketDataProvider
-from app.services.opportunities import Opportunity, OpportunityEngine
+from app.services.market_data import MarketDataUnavailableError, PolymarketDataProvider
+from app.services.opportunities import Opportunity, OpportunityEngine, ScanResult
 from app.services.paper import PaperTradingService
 from app.services.risk import RiskManager
 
@@ -38,12 +38,11 @@ app = FastAPI(title=settings.app_name)
 app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 templates = Jinja2Templates(directory=str(settings.templates_dir))
 
-provider = SampleMarketDataProvider()
+provider = PolymarketDataProvider()
 risk_manager = RiskManager()
 engine_service = OpportunityEngine(risk_manager=risk_manager)
 paper_service = PaperTradingService(
     provider=provider,
-    engine=engine_service,
     risk_manager=risk_manager,
 )
 
@@ -74,18 +73,24 @@ def startup() -> None:
 
 
 def _dashboard_data(db: Session) -> dict:
-    current_snapshot = provider.load_current_snapshot()
-    scan = engine_service.scan(snapshot=current_snapshot, db=db)
     settings_row = risk_manager.get_or_create_settings(db)
     stats = risk_manager.compute_paper_stats(db)
     live_gate = risk_manager.evaluate_live_eligibility(settings_row, stats)
     recent_trades = paper_service.list_recent_trades(db)
-    top = scan.opportunities[0] if scan.opportunities else None
-    headline = (
-        "No good trade right now."
-        if not top
-        else f"Best current setup: {top.name}. {top.recommended_action} first."
-    )
+    try:
+        current_snapshot = provider.load_current_snapshot()
+        scan = engine_service.scan(snapshot=current_snapshot, db=db)
+        top = scan.opportunities[0] if scan.opportunities else None
+        headline = (
+            "No good trade right now."
+            if not top
+            else f"Best current setup: {top.name}. {top.recommended_action} first."
+        )
+        data_error = None
+    except MarketDataUnavailableError as exc:
+        scan = ScanResult(snapshot_id="unavailable", as_of="", markets_scanned=0, opportunities=[], rejected=[])
+        headline = "Live Polymarket data is temporarily unavailable."
+        data_error = str(exc)
     return {
         "scan": scan,
         "settings": settings_row,
@@ -93,11 +98,15 @@ def _dashboard_data(db: Session) -> dict:
         "live_gate": live_gate,
         "recent_trades": recent_trades,
         "headline": headline,
+        "data_error": data_error,
     }
 
 
 def _find_opportunity(db: Session, opportunity_id: str) -> Opportunity:
-    current_snapshot = provider.load_current_snapshot()
+    try:
+        current_snapshot = provider.load_current_snapshot(force_refresh=True)
+    except MarketDataUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     scan = engine_service.scan(snapshot=current_snapshot, db=db)
     for opportunity in scan.opportunities:
         if opportunity.id == opportunity_id:
@@ -190,11 +199,15 @@ def update_settings(
     return RedirectResponse(url="/settings?message=Risk%20settings%20saved.", status_code=303)
 
 
-@app.post("/replay/run")
-def run_replay(db: Session = Depends(get_db)) -> RedirectResponse:
-    summary = paper_service.run_replay(db)
+@app.post("/paper/refresh")
+def refresh_paper_trades(db: Session = Depends(get_db)) -> RedirectResponse:
+    try:
+        summary = paper_service.refresh_trade_statuses(db)
+    except MarketDataUnavailableError as exc:
+        message = quote(str(exc))
+        return RedirectResponse(url=f"/settings?message={message}", status_code=303)
     message = quote(
-        f"Replay added {summary['created']} closed paper trades. Total paper P&L is now {summary['total_pnl']:.2f}."
+        f"Checked {summary['updated']} live paper trades. Resolved {summary['resolved']} of them."
     )
     return RedirectResponse(url=f"/settings?message={message}", status_code=303)
 
@@ -223,6 +236,7 @@ def dashboard_api(db: Session = Depends(get_db)) -> JSONResponse:
     return JSONResponse(
         {
             "headline": payload["headline"],
+            "data_error": payload["data_error"],
             "scan": {
                 "snapshot_id": payload["scan"].snapshot_id,
                 "as_of": payload["scan"].as_of,

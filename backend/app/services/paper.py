@@ -1,26 +1,24 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditEvent, PaperTrade
-from app.services.market_data import MarketSnapshot, SampleMarketDataProvider
-from app.services.opportunities import Opportunity, OpportunityEngine
+from app.services.market_data import PolymarketDataProvider
+from app.services.opportunities import Opportunity
 from app.services.risk import RiskManager
 
 
 class PaperTradingService:
     def __init__(
         self,
-        provider: SampleMarketDataProvider,
-        engine: OpportunityEngine,
+        provider: PolymarketDataProvider,
         risk_manager: RiskManager,
     ) -> None:
         self.provider = provider
-        self.engine = engine
         self.risk_manager = risk_manager
 
     def create_manual_trade(self, db: Session, opportunity: Opportunity) -> PaperTrade:
@@ -74,74 +72,56 @@ class PaperTradingService:
         db.refresh(trade)
         return trade
 
-    def run_replay(self, db: Session) -> dict[str, float | int]:
-        history = self.provider.load_historical_snapshots()
-        created = 0
-        skipped = 0
-        for snapshot in history:
-            scan = self.engine.scan(snapshot=snapshot, db=db)
-            for opportunity in scan.opportunities:
-                if opportunity.recommended_action == "Watch":
-                    skipped += 1
-                    continue
+    def refresh_trade_statuses(self, db: Session) -> dict[str, int]:
+        market_map = self.provider.load_market_map(include_closed=True)
+        open_trades = list(db.scalars(select(PaperTrade).where(PaperTrade.status == "OPEN")))
+        updated = 0
+        resolved = 0
 
-                existing = db.scalar(
-                    select(PaperTrade).where(
-                        PaperTrade.opportunity_id == opportunity.id,
-                        PaperTrade.snapshot_id == opportunity.snapshot_id,
-                        PaperTrade.source == "replay",
+        for trade in open_trades:
+            trade_markets = json.loads(trade.markets_json)
+            market_ids = [str(item.get("id")) for item in trade_markets if item.get("id")]
+            live_markets = [market_map.get(market_id) for market_id in market_ids if market_map.get(market_id)]
+            if not live_markets:
+                continue
+
+            if trade.strategy_type == "sum_to_one":
+                current_cost = round(sum(market.buy_yes_price for market in live_markets), 4)
+                trade.current_price_mark = current_cost
+                settled_yes_count = sum(1 for market in live_markets if market.settled_yes is True)
+                settled_count = sum(1 for market in live_markets if market.settled_yes is not None)
+                if settled_yes_count == 1 or (settled_count == len(live_markets) and settled_yes_count >= 1):
+                    payout_units = trade.stake_amount / trade.unit_cost_after_costs
+                    trade.realized_pnl = round(payout_units - trade.stake_amount, 2)
+                    trade.result_label = "One basket outcome resolved YES"
+                    trade.status = "CLOSED"
+                    trade.closed_at = datetime.now(UTC).replace(tzinfo=None)
+                    resolved += 1
+            else:
+                primary_market = live_markets[0]
+                trade.current_price_mark = primary_market.buy_yes_price
+                if primary_market.settled_yes is not None:
+                    payout_units = trade.stake_amount / trade.unit_cost_after_costs
+                    trade.realized_pnl = round(
+                        payout_units * (1.0 if primary_market.settled_yes else 0.0) - trade.stake_amount,
+                        2,
                     )
-                )
-                if existing:
-                    skipped += 1
-                    continue
-
-                realized_pnl, result_label = self._evaluate_replay_trade(snapshot, opportunity)
-                trade = PaperTrade(
-                    opportunity_id=opportunity.id,
-                    snapshot_id=opportunity.snapshot_id,
-                    source="replay",
-                    opportunity_name=opportunity.name,
-                    strategy_type=opportunity.strategy_type,
-                    action_label=opportunity.recommended_action,
-                    status="CLOSED",
-                    stake_amount=opportunity.max_suggested_size,
-                    unit_cost_after_costs=opportunity.unit_cost_after_costs,
-                    expected_edge_per_dollar=opportunity.estimated_edge_per_dollar,
-                    expected_profit=opportunity.expected_profit_on_suggested_size,
-                    worst_case_loss=opportunity.worst_case_loss,
-                    fill_probability=opportunity.fill_probability,
-                    fees_assumed=opportunity.fees_assumed,
-                    slippage_assumed=opportunity.slippage_assumed,
-                    quality_score=opportunity.quality_score,
-                    markets_json=json.dumps(opportunity.markets, ensure_ascii=True),
-                    notes=f"Replay generated from {snapshot.snapshot_id}",
-                    current_price_mark=1.0 if realized_pnl >= 0 else 0.0,
-                    realized_pnl=realized_pnl,
-                    result_label=result_label,
-                    closed_at=datetime.utcnow(),
-                )
-                db.add(trade)
-                created += 1
+                    trade.result_label = (
+                        "Primary market resolved YES" if primary_market.settled_yes else "Primary market resolved NO"
+                    )
+                    trade.status = "CLOSED"
+                    trade.closed_at = datetime.now(UTC).replace(tzinfo=None)
+                    resolved += 1
+            updated += 1
 
         db.add(
             AuditEvent(
-                event_type="replay_run",
-                details_json=json.dumps(
-                    {"created": created, "skipped": skipped},
-                    ensure_ascii=True,
-                ),
+                event_type="paper_trade_refresh",
+                details_json=json.dumps({"updated": updated, "resolved": resolved}, ensure_ascii=True),
             )
         )
         db.commit()
-        stats = self.risk_manager.compute_paper_stats(db)
-        return {
-            "created": created,
-            "skipped": skipped,
-            "closed_trades": stats.closed_trades,
-            "total_pnl": stats.total_pnl,
-            "win_rate": stats.win_rate,
-        }
+        return {"updated": updated, "resolved": resolved}
 
     def list_recent_trades(self, db: Session, limit: int = 8) -> list[PaperTrade]:
         return list(
@@ -149,19 +129,3 @@ class PaperTradingService:
                 select(PaperTrade).order_by(PaperTrade.created_at.desc()).limit(limit)
             )
         )
-
-    @staticmethod
-    def _evaluate_replay_trade(snapshot: MarketSnapshot, opportunity: Opportunity) -> tuple[float, str]:
-        if opportunity.strategy_type == "sum_to_one":
-            payout_units = opportunity.max_suggested_size / opportunity.unit_cost_after_costs
-            realized = round(payout_units - opportunity.max_suggested_size, 2)
-            return realized, "Basket settled as expected"
-
-        primary_market = snapshot.markets[opportunity.primary_market_id]
-        payout_units = opportunity.max_suggested_size / opportunity.unit_cost_after_costs
-        realized = round(
-            payout_units * (1.0 if primary_market.settled_yes else 0.0) - opportunity.max_suggested_size,
-            2,
-        )
-        result_label = "Broader market finished YES" if primary_market.settled_yes else "Broader market finished NO"
-        return realized, result_label

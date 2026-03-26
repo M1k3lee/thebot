@@ -4,7 +4,10 @@
     <div>
       <p class="eyebrow">Beginner-first prediction-market assistant</p>
       <h1>{{ headline }}</h1>
-      <p class="lede">This app looks for small, explainable gaps. It would rather tell you to wait than push a weak trade.</p>
+      <p class="lede">This app scans live Polymarket events for small, explainable gaps. It would rather tell you to wait than push a weak trade.</p>
+      {% if data_error %}
+        <p class="lede">{{ data_error }}</p>
+      {% endif %}
     </div>
     <div class="hero-side">
       <div class="summary-chip">
@@ -12,8 +15,12 @@
         <strong>{{ "Live mode enabled" if settings.live_mode_enabled else "Paper only" }}</strong>
       </div>
       <div class="summary-chip">
-        <span>Data as of</span>
-        <strong>{{ scan.as_of }}</strong>
+        <span>Data source</span>
+        <strong>Polymarket Gamma + CLOB</strong>
+      </div>
+      <div class="summary-chip">
+        <span>Live scan time</span>
+        <strong>{{ scan.as_of if scan.as_of else "Unavailable" }}</strong>
       </div>
       <div class="summary-chip">
         <span>Markets scanned</span>
@@ -147,7 +154,7 @@
           {% endfor %}
         </ul>
       {% else %}
-        <p class="muted">No paper trades yet. Start with a simulation or run the sample replay in Settings.</p>
+        <p class="muted">No paper trades yet. Start with a live-market simulation and let the history build from real Polymarket outcomes.</p>
       {% endif %}
     </article>
   </section>

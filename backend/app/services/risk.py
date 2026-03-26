@@ -55,7 +55,6 @@ class RiskManager:
         trades = list(db.scalars(select(PaperTrade).order_by(PaperTrade.created_at.asc())))
         open_trades = [trade for trade in trades if trade.status == "OPEN"]
         closed_trades = [trade for trade in trades if trade.status == "CLOSED"]
-        operational_closed = [trade for trade in closed_trades if trade.source != "replay"]
         wins = sum(1 for trade in closed_trades if (trade.realized_pnl or 0.0) > 0)
         losses = sum(1 for trade in closed_trades if (trade.realized_pnl or 0.0) < 0)
         closed_count = len(closed_trades)
@@ -66,7 +65,7 @@ class RiskManager:
             2,
         )
         consecutive_losses = 0
-        for trade in reversed(operational_closed):
+        for trade in reversed(closed_trades):
             if (trade.realized_pnl or 0.0) < 0:
                 consecutive_losses += 1
                 continue
@@ -76,7 +75,7 @@ class RiskManager:
         daily_realized_loss = round(
             sum(
                 abs(min(trade.realized_pnl or 0.0, 0.0))
-                for trade in operational_closed
+                for trade in closed_trades
                 if trade.closed_at and trade.closed_at.date() == today
             ),
             2,

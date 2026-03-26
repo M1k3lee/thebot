@@ -190,6 +190,7 @@ class OpportunityEngine:
         )
         cards = [
             {
+                "id": market.id,
                 "label": market.short_name,
                 "question": market.question,
                 "buy_yes_price": market.buy_yes_price,
@@ -334,12 +335,14 @@ class OpportunityEngine:
                 volatility_score=broader.volatility_score,
                 markets=[
                     {
+                        "id": broader.id,
                         "label": broader.short_name,
                         "question": broader.question,
                         "buy_yes_price": broader.buy_yes_price,
                         "role": "Broader market to buy",
                     },
                     {
+                        "id": narrower.id,
                         "label": narrower.short_name,
                         "question": narrower.question,
                         "buy_yes_price": narrower.buy_yes_price,

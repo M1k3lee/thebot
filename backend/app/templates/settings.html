@@ -36,7 +36,7 @@
 
     <article class="panel">
       <h2>Live mode gate</h2>
-      <p class="muted">Live mode stays off by default. This demo does not send real market orders, but the gate still shows what would be required before any live adapter could be turned on.</p>
+      <p class="muted">Live mode stays off by default. The scanner uses live Polymarket data, but this build still does not place real orders.</p>
       <ul class="compact-list">
         {% for check in live_gate.checks %}
           <li>
@@ -56,10 +56,10 @@
 
   <section class="two-column">
     <article class="panel">
-      <h2>Replay and validation</h2>
-      <p class="muted">Run the sample replay to generate historical paper trades and compare expected edge with realized results.</p>
-      <form method="post" action="/replay/run">
-        <button class="primary-button" type="submit">Run sample replay</button>
+      <h2>Live paper tracking</h2>
+      <p class="muted">This version does not use synthetic history. Paper performance has to come from real Polymarket markets over time.</p>
+      <form method="post" action="/paper/refresh">
+        <button class="primary-button" type="submit">Refresh paper trade status</button>
       </form>
       <dl class="fact-list">
         <div><dt>Closed paper trades</dt><dd>{{ stats.closed_trades }}</dd></div>
@@ -76,7 +76,7 @@
         <li><span>Paper trading is the default. Weak or confusing setups are rejected.</span></li>
         <li><span>Daily loss caps, per-market caps, and consecutive-loss stops all block stronger actions.</span></li>
         <li><span>No martingale, no averaging down, and no leverage are allowed in this MVP.</span></li>
-        <li><span>If there is no valid edge after costs, the app says so clearly.</span></li>
+        <li><span>If there is no valid edge after costs in the live Polymarket book, the app says so clearly.</span></li>
       </ul>
     </article>
   </section>
